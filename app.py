@@ -17,7 +17,7 @@ from langchain_core.output_parsers import JsonOutputParser
 
 st.set_page_config(page_title="Elite Global Ranking", layout="wide")
 
-st.title("Elite Global Ranking System")
+st.title("Ranking Selection System")
 st.markdown("*Sistem Seleksi Data Scientist Kelas Dunia berbasis AI (RAG)*")
 
 # ==============================================================================
