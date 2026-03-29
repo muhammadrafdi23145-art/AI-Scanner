@@ -43,7 +43,7 @@ with st.sidebar:
 # ==============================================================================
 class StrategiInterview(BaseModel):
     alasan_layak: str = Field(description="Alasan mengapa kandidat layak")
-    celah_teknis: str = Field(description="Satu celah atau tantangan teknis")
+    celah_teknis: str = Field(description="Satu celah atau tantangan teknis atau red flag dari sosmed")
     pertanyaan_lanjutan: List[str] = Field(description="Daftar 3 pertanyaan wawancara tingkat lanjut")
 
 class Kandidat(BaseModel):
@@ -53,7 +53,7 @@ class Kandidat(BaseModel):
     skor_global: int = Field(description="Skor keseluruhan (0-100)")
     universitas: str = Field(description="Universitas asal")
     estimasi_rank_dunia: str = Field(description="Estimasi peringkat QS World")
-    jejak_digital: str = Field(description="Ringkasan rekam jejak digital (LinkedIn, GitHub, Kaggle, dll) berdasarkan penelusuran internet")
+    jejak_digital: str = Field(description="Analisis komprehensif rekam jejak digital berdasarkan input manual rekruter dan penelusuran internet")
     alasan_utama: str = Field(description="Alasan utama skor")
     strategi_interview: StrategiInterview = Field(description="Strategi wawancara")
 
@@ -68,60 +68,48 @@ def load_embeddings():
     return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 def ekstrak_username_dari_teks(teks_cv):
-    """Mengekstrak URL atau username media sosial dari teks CV menggunakan RegEx"""
     usernames = []
-    
-    # Deteksi URL dari berbagai platform profesional dan media sosial
     linkedin = re.search(r'linkedin\.com/in/([a-zA-Z0-9_-]+)', teks_cv, re.IGNORECASE)
     if linkedin: usernames.append(f"linkedin.com/in/{linkedin.group(1)}")
-        
     github = re.search(r'github\.com/([a-zA-Z0-9_-]+)', teks_cv, re.IGNORECASE)
     if github: usernames.append(f"github.com/{github.group(1)}")
-        
     kaggle = re.search(r'kaggle\.com/([a-zA-Z0-9_-]+)', teks_cv, re.IGNORECASE)
     if kaggle: usernames.append(f"kaggle.com/{kaggle.group(1)}")
-        
-    instagram = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', teks_cv, re.IGNORECASE)
-    if instagram: usernames.append(f"instagram.com/{instagram.group(1)}")
-        
-    tiktok = re.search(r'tiktok\.com/@([a-zA-Z0-9_\.]+)', teks_cv, re.IGNORECASE)
-    if tiktok: usernames.append(f"tiktok.com/@{tiktok.group(1)}")
-
-    facebook = re.search(r'facebook\.com/([a-zA-Z0-9_\.]+)', teks_cv, re.IGNORECASE)
-    if facebook: usernames.append(f"facebook.com/{facebook.group(1)}")
-        
     return usernames
 
-def cari_jejak_digital(nama_file, teks_cv):
-    """Mencari jejak digital dengan prioritas username dari CV, lalu fallback ke nama"""
-    usernames_ditemukan = ekstrak_username_dari_teks(teks_cv)
+def cari_jejak_digital(nama_file, teks_cv, input_manual_rekruter):
+    """Mencari jejak digital dengan menggabungkan input manual dan internet search"""
+    hasil_teks = ""
     
-    if usernames_ditemukan:
-        # Jika username/URL ditemukan di CV, gunakan sebagai kueri pencarian utama
-        kueri = " OR ".join(usernames_ditemukan)
-        status_sumber = "Mencari berdasarkan URL/Username akurat dari CV"
+    # 1. Prioritaskan Input Manual dari Rekruter
+    if input_manual_rekruter:
+        hasil_teks += f"[CATATAN REKRUTER / MEDIA SOSIAL MANUAL]: {input_manual_rekruter}\n\n"
+        kueri = f'"{input_manual_rekruter}"'
     else:
-        # Fallback: Gunakan nama file jika tidak ada link yang tercantum
-        nama_bersih = nama_file.replace(".pdf", "").replace("-", " ").replace("_", " ")
-        kueri = f'"{nama_bersih}" (LinkedIn OR GitHub OR Kaggle OR Instagram OR TikTok OR Facebook)'
-        status_sumber = "Mencari berdasarkan indikasi Nama (tidak ditemukan link di CV)"
-    
-    hasil_teks = f"Metode Pencarian: {status_sumber}\nKueri: {kueri}\n\n"
+        # 2. Fallback ke URL di CV atau Nama Kandidat
+        usernames_ditemukan = ekstrak_username_dari_teks(teks_cv)
+        if usernames_ditemukan:
+            kueri = " OR ".join(usernames_ditemukan)
+        else:
+            nama_bersih = nama_file.replace(".pdf", "").replace("-", " ").replace("_", " ")
+            kueri = f'"{nama_bersih}" (LinkedIn OR GitHub OR Kaggle)'
+            
+    hasil_teks += f"[HASIL PENELUSURAN OTOMATIS]:\n"
     
     try:
         with DDGS() as ddgs:
-            results = [r for r in ddgs.text(kueri, max_results=4)]
+            results = [r for r in ddgs.text(kueri, max_results=3)]
             if results:
                 for r in results:
                     hasil_teks += f"- [{r['title']}] {r['body']}\n"
             else:
-                hasil_teks += "Tidak ada rekam jejak relevan yang ditemukan di internet."
+                hasil_teks += "Tidak ada data publik relevan yang ditemukan di mesin pencari.\n"
     except Exception as e:
-        hasil_teks += f"Gagal melakukan pencarian internet: {str(e)}"
+        hasil_teks += f"Pencarian otomatis gagal: {str(e)}\n"
         
     return hasil_teks
 
-def elite_global_ranking(pdf_paths, criteria, api_key, model_name):
+def elite_global_ranking(pdf_paths, criteria, api_key, model_name, manual_inputs_dict):
     os.environ["GOOGLE_API_KEY"] = api_key
     llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.1)
     embeddings = load_embeddings()
@@ -131,20 +119,20 @@ def elite_global_ranking(pdf_paths, criteria, api_key, model_name):
     
     for path in pdf_paths:
         nama_file = os.path.basename(path)
+        input_manual = manual_inputs_dict.get(nama_file, "")
+        
         try:
             loader = PyPDFLoader(path)
             docs = loader.load()
-            
-            # Gabungkan seluruh teks dalam satu PDF untuk dianalisis oleh Regex
             teks_lengkap_cv = " ".join([doc.page_content for doc in docs])
             
             for doc in docs:
                 doc.metadata["candidate_name"] = nama_file
             all_docs.extend(docs)
             
-            # Lakukan pencarian internet pintar
-            jejak = cari_jejak_digital(nama_file, teks_lengkap_cv)
-            data_internet_tambahan += f"\nData Internet untuk file {nama_file}:\n{jejak}\n"
+            # Analisis jejak digital (menggabungkan Catatan Manual & Pencarian Web)
+            jejak = cari_jejak_digital(nama_file, teks_lengkap_cv, input_manual)
+            data_internet_tambahan += f"\nData Investigasi untuk {nama_file}:\n{jejak}\n"
             
         except Exception as e:
             st.error(f"Gagal memproses file {nama_file}: {e}")
@@ -164,7 +152,7 @@ def elite_global_ranking(pdf_paths, criteria, api_key, model_name):
     KONTEKS DARI CV (PDF):
     {context}
 
-    KONTEKS DARI PENELUSURAN INTERNET:
+    KONTEKS INVESTIGASI (CATATAN MANUAL & INTERNET):
     {internet_data}
 
     Kriteria: {question}
@@ -172,7 +160,7 @@ def elite_global_ranking(pdf_paths, criteria, api_key, model_name):
     Logika Penilaian:
     1. Global Academic Prestige (40%): Lulusan Top 100 Global dapat nilai maksimal.
     2. Technical Prowess (40%): Fokus Python, SOTA AI Models, MLOps.
-    3. Jejak Digital (20%): Evaluasi rekam jejak online (LinkedIn, GitHub, Media Sosial). Jika ada data hasil pencarian internet yang cocok dengan identitas/username kandidat, gunakan untuk memvalidasi keahlian praktis dan profil kandidat.
+    3. Jejak Digital & Budaya (20%): Evaluasi rekam jejak online. BACA DENGAN TELITI 'CATATAN REKRUTER' jika ada. Catatan rekruter mengenai perilaku sosial media kandidat (Instagram, TikTok, dll) adalah sumber kebenaran tertinggi. Evaluasi apakah pola kebiasaan, portofolio, dan etika profesional mereka sesuai standar industri tinggi. Berikan penalti jika ada perilaku tidak profesional.
 
     TIDAK BOLEH ADA TEKS LAIN SELAIN JSON. PATUHI FORMAT BERIKUT:
     {format_instructions}
@@ -200,56 +188,69 @@ def elite_global_ranking(pdf_paths, criteria, api_key, model_name):
 # ==============================================================================
 # 4. ANTARMUKA UTAMA (MAIN UI)
 # ==============================================================================
-uploaded_files = st.file_uploader("Unggah CV Kandidat (PDF) - Disarankan format nama file: Nama_Kandidat.pdf", type="pdf", accept_multiple_files=True)
+st.markdown("### 1. Unggah Dokumen CV")
+uploaded_files = st.file_uploader("Unggah CV Kandidat (PDF) - Anda bisa mengunggah lebih dari 1 file", type="pdf", accept_multiple_files=True)
 
-if st.button("Mulai Analisis Ranking & OSINT Check", type="primary", use_container_width=True):
-    if not api_key:
-        st.warning("Masukkan Google API Key di sidebar sebelah kiri terlebih dahulu.")
-    elif not uploaded_files:
-        st.warning("Silakan unggah minimal 1 file CV (PDF).")
-    else:
-        # Menyimpan file upload ke temporary folder di cloud
-        temp_dir = tempfile.mkdtemp()
-        saved_paths = []
-        for file in uploaded_files:
-            file_path = os.path.join(temp_dir, file.name)
-            with open(file_path, "wb") as f:
-                f.write(file.getbuffer())
-            saved_paths.append(file_path)
+manual_inputs = {}
 
-        with st.spinner(f"AI sedang menganalisis CV dan menelusuri jejak digital {len(saved_paths)} kandidat. Mohon tunggu..."):
-            hasil = elite_global_ranking(saved_paths, kriteria, api_key, model_name)
-            
-            if "error" not in hasil and "kandidat" in hasil:
-                kandidat_list = hasil["kandidat"]
-                kandidat_list.sort(key=lambda x: x.get('skor_global', 0), reverse=True)
-                for urutan, kand in enumerate(kandidat_list):
-                    kand['peringkat'] = urutan + 1
+# Menampilkan kolom input manual hanya jika ada file yang diunggah
+if uploaded_files:
+    st.markdown("---")
+    st.markdown("### 2. Validasi Media Sosial & Catatan Tambahan (Opsional)")
+    st.info("Masukkan link media sosial yang akurat, ATAU tulis catatan manual mengenai kebiasaan/profil kandidat berdasarkan temuan Anda di sosmed agar AI memberikan penilaian karakter yang presisi.")
+    
+    for file in uploaded_files:
+        manual_inputs[file.name] = st.text_area(
+            f"Catatan Sosmed/Portofolio untuk kandidat: {file.name}", 
+            placeholder="Contoh: IG @budi (Sering posting konten AI, tapi bahasanya kurang profesional) ATAU linkedin.com/in/budi",
+            height=68,
+            key=file.name
+        )
+        
+    st.markdown("---")
+    if st.button("Mulai Analisis Ranking & Profiling", type="primary", use_container_width=True):
+        if not api_key:
+            st.warning("Masukkan Google API Key di sidebar sebelah kiri terlebih dahulu.")
+        else:
+            temp_dir = tempfile.mkdtemp()
+            saved_paths = []
+            for file in uploaded_files:
+                file_path = os.path.join(temp_dir, file.name)
+                with open(file_path, "wb") as f:
+                    f.write(file.getbuffer())
+                saved_paths.append(file_path)
 
-                st.success("Analisis & Pengecekan Latar Belakang Selesai. Berikut adalah daftar ranking kandidat:")
+            with st.spinner(f"AI sedang menganalisis {len(saved_paths)} CV dan memproses catatan media sosial..."):
+                hasil = elite_global_ranking(saved_paths, kriteria, api_key, model_name, manual_inputs)
                 
-                # Tabel Ringkasan
-                ringkasan = [{"Peringkat": k['peringkat'], "Kandidat": k['nama_kandidat'], "Skor": k['skor_global'], "Universitas": k['universitas']} for k in kandidat_list]
-                st.table(ringkasan)
+                if "error" not in hasil and "kandidat" in hasil:
+                    kandidat_list = hasil["kandidat"]
+                    kandidat_list.sort(key=lambda x: x.get('skor_global', 0), reverse=True)
+                    for urutan, kand in enumerate(kandidat_list):
+                        kand['peringkat'] = urutan + 1
 
-                # Detail Accordion
-                st.markdown("### Detail Kandidat, Jejak Digital & Strategi Wawancara")
-                for kand in kandidat_list:
-                    with st.expander(f"Rank {kand['peringkat']} - {kand['nama_kandidat']} (Skor: {kand['skor_global']})"):
-                        st.write(f"**Alasan Utama:** {kand['alasan_utama']}")
-                        st.info(f"**Hasil Investigasi Web (OSINT):**\n{kand['jejak_digital']}")
-                        st.markdown("---")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.write(f"**Universitas:** {kand['universitas']} *(Estimasi QS: {kand['estimasi_rank_dunia']})*")
-                            st.write("**Strategi Interview:**")
-                            st.success(f"**Kelebihan:** {kand['strategi_interview']['alasan_layak']}")
-                            st.warning(f"**Celah Teknis:** {kand['strategi_interview']['celah_teknis']}")
+                    st.success("Analisis & Pengecekan Karakter Selesai. Berikut adalah hasilnya:")
+                    
+                    ringkasan = [{"Peringkat": k['peringkat'], "Kandidat": k['nama_kandidat'], "Skor": k['skor_global'], "Universitas": k['universitas']} for k in kandidat_list]
+                    st.table(ringkasan)
+
+                    st.markdown("### Detail Kandidat, Investigasi Karakter & Strategi Wawancara")
+                    for kand in kandidat_list:
+                        with st.expander(f"Rank {kand['peringkat']} - {kand['nama_kandidat']} (Skor: {kand['skor_global']})"):
+                            st.write(f"**Alasan Utama:** {kand['alasan_utama']}")
+                            st.info(f"**Hasil Investigasi Profil (Sosmed & Internet):**\n{kand['jejak_digital']}")
+                            st.markdown("---")
                             
-                        with col2:
-                            st.write("**Pertanyaan Lanjutan:**")
-                            for q in kand['strategi_interview']['pertanyaan_lanjutan']:
-                                st.write(f"- {q}")
-            else:
-                st.error(f"Terjadi kesalahan saat pemrosesan: {hasil.get('error')}")
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write(f"**Universitas:** {kand['universitas']} *(Estimasi QS: {kand['estimasi_rank_dunia']})*")
+                                st.write("**Strategi Interview:**")
+                                st.success(f"**Kelebihan/Potensi:** {kand['strategi_interview']['alasan_layak']}")
+                                st.warning(f"**Celah/Red Flags:** {kand['strategi_interview']['celah_teknis']}")
+                                
+                            with col2:
+                                st.write("**Pertanyaan Lanjutan:**")
+                                for q in kand['strategi_interview']['pertanyaan_lanjutan']:
+                                    st.write(f"- {q}")
+                else:
+                    st.error(f"Terjadi kesalahan saat pemrosesan: {hasil.get('error')}")
