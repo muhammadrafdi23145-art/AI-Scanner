@@ -5,3 +5,4 @@ chromadb
 pypdf
 sentence-transformers
 pydantic
+duckduckgo-search
