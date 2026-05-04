@@ -2,18 +2,14 @@
 
 **An Intelligent Recruitment Pipeline for World-Class Data Scientist Selection**
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_svg.svg)](https://your-app-link.streamlit.app)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![LangChain](https://img.shields.io/badge/Powered%20by-LangChain-brightgreen)](https://python.langchain.com/)
-
-## 🚀 Overview
+## Overview
 The **Ranking Selection System** is an advanced AI-driven recruitment tool designed to identify, evaluate, and rank elite Data Scientists. Unlike traditional ATS (Applicant Tracking Systems), this tool combines **Retrieval-Augmented Generation (RAG)** for deep CV analysis and **Open-Source Intelligence (OSINT)** to validate a candidate's digital footprint across GitHub, LinkedIn, and Kaggle.
 
 This project was built to eliminate human bias and significantly reduce the time required to perform comprehensive technical and background evaluations.
 
 ---
 
-## 🛠️ Key Features
+## Key Features
 
 ### 1. Automated RAG Pipeline
 Utilizes **ChromaDB** and **HuggingFace Embeddings** to ingest and query multiple PDF resumes. It performs context-aware analysis to find technical skills that go beyond simple keyword matching.
@@ -59,9 +55,31 @@ For every candidate, the system generates:
    ```bash
    pip install -r requirements.txt
 
+3. **Set Up API Key:**
+   
+Get your Google API Key from [Google AI Studio](https://aistudio.google.com/api-keys) and enter it directly into the Streamlit sidebar.
+
 4. **Run the Streamlit application:**
    ```bash
    streamlit run app.py
 
-6. **Usage:**
-    - 
+## Evaluation Logic
+
+The AI acts as a Global Talent Headhunter, applying the following reasoning:
+
+- Top 100 QS World Universities receive maximum academic points.
+
+- MLOps & AI Research experience is prioritized over generic data analysis.
+
+- Manual Recruiter Notes are treated as the "Source of Truth" for character assessments, allowing recruiters to input social media observations which the AI then analyzes for professionalism.
+
+## Result
+
+<img width="1920" height="1080" alt="Screenshot (485)" src="https://github.com/user-attachments/assets/03be17f3-9201-4e71-929d-09ea2a7a4852" />
+
+<img width="1920" height="1080" alt="Screenshot (483)" src="https://github.com/user-attachments/assets/984040ed-760b-4c39-95b5-c299258d0d17" />
+
+
+## Disclaimer
+
+This tool is intended for recruitment assistance. Final decisions should always be made by a human hiring manager. The OSINT search results depend on public availability of data.
