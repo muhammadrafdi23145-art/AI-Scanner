@@ -36,7 +36,7 @@ For every candidate, the system generates:
 ## Tech Stack
 - **Framework:** Streamlit (UI/UX)
 - **Orchestration:** LangChain
-- **LLM:** Google Gemini API (`gemini-1.5-flash`, `gemini-1.5-pro`)
+- **LLM:** Google Gemini API (`gemini-3.0-flash-preview`, `gemini-2.5-flash`, `gemini-1.5-flash`, `gemini-1.5-pro`)
 - **Vector Store:** ChromaDB
 - **Embeddings:** HuggingFace (`all-MiniLM-L6-v2`)
 - **OSINT Tool:** DuckDuckGo Search (DDGS)
