@@ -28,7 +28,7 @@ st.markdown("*Sistem Seleksi Data Scientist Kelas Dunia berbasis AI & Open-Sourc
 with st.sidebar:
     st.header("Konfigurasi Sistem")
     api_key = st.text_input("Google API Key", type="password", help="Masukkan API Key Gemini Anda")
-    model_name = st.selectbox("Pilih Model AI", ["gemini-3-flash-preview", "gemini-1.5-flash", "gemini-1.5-pro"])
+    model_name = st.selectbox("Pilih Model AI", ["gemini-3-flash-preview", "gemini-2.5-flash","gemini-1.5-flash", "gemini-1.5-pro"])
     
     st.markdown("---")
     st.markdown("**Kriteria Pencarian:**")
